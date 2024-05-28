@@ -1,0 +1,102 @@
+#pragma kernel Init
+#pragma kernel Update
+
+//struct LorenzValues
+//{
+//    float Prandtl;
+//    float Rayleigh;
+//    float b;
+//} lorenz;
+
+struct Particle
+{
+    float x;
+    float y;
+    float z;
+    //
+    float t;
+};
+
+Particle float4ToParticle(float4 value)
+{
+    Particle output;
+    output.x = value.x;
+    output.y = value.y;
+    output.z = value.z;
+    output.t = value.w;
+    return output;
+}
+
+RWStructuredBuffer<Particle> Particles;
+StructuredBuffer<float3> originPoints;
+
+int trailLength;
+int trailPosition;
+
+float3 lorenz;
+float deltaTime;
+
+
+/// Inserting RNG Here
+
+// Schechter - Bridson hash: www.cs.ubc.ca/~rbridson/docs/schechter-sca08-turbulence.pdf
+uint hash(uint state)
+{
+    state = (state ^ 2747636419u) * 2654435769u;
+    state = (state ^ (state >> 16)) * 2654435769u;
+    state = (state ^ (state >> 16)) * 2654435769u;
+    return state;
+}
+
+// Scales a uint to range [0, 1]
+float scaleToRange01(uint state)
+{
+    return state / 4294967295.0;
+}
+
+// Random value between 0 and 1 (prngState is the 'seed' and will be modified by this function)
+float randomValue(inout uint prngState)
+{
+    prngState = hash(prngState);
+    return scaleToRange01(prngState);
+}
+
+///
+
+
+
+
+[numthreads(8, 1, 1)]
+void Init(uint3 id : SV_DispatchThreadID)
+{
+    uint currentIndex = id.x;// * trailLength;
+    
+    Particles[currentIndex] = float4ToParticle(float4(originPoints[currentIndex], 0));
+    /*
+    for (int i = 1; i < trailLength; i++)
+    {
+        Particles[currentIndex + i] = float4ToParticle(float4(0, 0, 0, 0));
+    }
+    */
+}
+
+Particle lorenzFunction(Particle particle, float3 lorenzValues, float step)
+{
+    float dx = lorenzValues.x * (particle.y - particle.x);
+    float dy = particle.x * (lorenzValues.y - particle.z) - particle.y;
+    float dz = particle.x * particle.y - lorenzValues.z * particle.z;
+    
+    particle.x += dx * step;
+    particle.y += dy * step;
+    particle.z += dz * step;
+    
+    return particle;
+}
+
+
+[numthreads(8, 1, 1)]
+void Update(uint3 id : SV_DispatchThreadID)
+{
+    uint currentIndex = id.x * trailLength + trailPosition;
+    Particles[id.x] = lorenzFunction(Particles[currentIndex], lorenz, deltaTime);
+}
